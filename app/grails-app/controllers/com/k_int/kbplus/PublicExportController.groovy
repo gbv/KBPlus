@@ -139,14 +139,17 @@ class PublicExportController {
   def packages() {
     def result=[:]
     log.debug("publicExport/packages - parameters: ${params}")
-    if(params.q && params.q.size() > 1){
+
+    if(params.q) {
       result.max = params.max ? Integer.parseInt(params.max) : 25;
       result.offset = params.offset ? Integer.parseInt(params.offset) : 0;
 
       def deleted_package_status =  RefdataCategory.lookupOrCreate( 'Package Status', 'Deleted' );
-      def qry_params = [params.q, deleted_package_status]
+      // def qry_params = [params.q.toLowerCase(), deleted_package_status]
+      def qry_params = [params.q.toLowerCase()]
 
-      def base_qry = "from Package as p where lower(p.name) like ? and not ( p.packageStatus = ? )"
+      // def base_qry = "from Package as p where lower(p.name) like ? and not ( p.packageStatus = ? )"
+      def base_qry = "from Package as p where lower(p.name) like ?"
       result.packageInstanceTotal =  Package.executeQuery("select count(p) ${base_qry}", qry_params )[0]
 
       result.packageInstanceList = Package.executeQuery("select p ${base_qry}", qry_params,[max:result.max, offset:result.offset])
@@ -166,7 +169,7 @@ class PublicExportController {
     def result = [:]
 
     def paginate_after = params.paginate_after ?: 19;
-    result.max = params.max ? Integer.parseInt(params.max) : ( ( response.format == "csv" || response.format == "json" ) ? 10000 : 10 );
+    result.max = params.max ? Integer.parseInt(params.max) : ( ( response.format == "csv" || response.format == "json" ) ? 10000 : 10000 );
     result.offset = params.offset ? Integer.parseInt(params.offset) : 0;
 
     log.debug("max = ${result.max}");
