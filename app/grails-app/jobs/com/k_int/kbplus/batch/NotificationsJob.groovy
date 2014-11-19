@@ -1,9 +1,5 @@
 package com.k_int.kbplus.batch
 
-import org.codehaus.groovy.grails.commons.ApplicationHolder
-
-
-
 class NotificationsJob {
 
   def zenDeskSyncService

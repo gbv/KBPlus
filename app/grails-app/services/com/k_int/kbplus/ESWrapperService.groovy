@@ -3,7 +3,6 @@ package com.k_int.kbplus
 import org.elasticsearch.groovy.node.GNode
 import org.elasticsearch.groovy.node.GNodeBuilder
 import static org.elasticsearch.groovy.node.GNodeBuilder.*
-import org.codehaus.groovy.grails.commons.ApplicationHolder
 
 class ESWrapperService {
 

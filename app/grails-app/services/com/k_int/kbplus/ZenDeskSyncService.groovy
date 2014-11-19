@@ -1,6 +1,6 @@
 package com.k_int.kbplus
 
-import org.codehaus.groovy.grails.commons.ApplicationHolder
+import grails.util.Holders
 import groovyx.net.http.*
 import org.apache.http.entity.mime.*
 import static groovyx.net.http.Method.GET
@@ -23,20 +23,20 @@ class ZenDeskSyncService {
 
   def doSync() {
 
-    if ( ApplicationHolder.application.config.ZenDeskBaseURL == null || 
-         ApplicationHolder.application.config.ZenDeskBaseURL == '' ||
-         ApplicationHolder.application.config.kbplusSystemId == null ||
-         ApplicationHolder.application.config.kbplusSystemId == '' )
+    if ( Holders.grailsApplication.config.ZenDeskBaseURL == null || 
+         Holders.grailsApplication.config.ZenDeskBaseURL == '' ||
+         Holders.grailsApplication.config.kbplusSystemId == null ||
+         Holders.grailsApplication.config.kbplusSystemId == '' )
       return;
 
     // Select all public packages where there is currently no forumId
-    def http = new RESTClient(ApplicationHolder.application.config.ZenDeskBaseURL)
+    def http = new RESTClient(Holders.grailsApplication.config.ZenDeskBaseURL)
 
-    log.debug("Add zendesk creds: ${ApplicationHolder.application.config.ZenDeskLoginEmail}:${ApplicationHolder.application.config.ZenDeskLoginPass}");
+    log.debug("Add zendesk creds: ${Holders.grailsApplication.config.ZenDeskLoginEmail}:${Holders.grailsApplication.config.ZenDeskLoginPass}");
 
     http.client.addRequestInterceptor( new HttpRequestInterceptor() {
       void process(HttpRequest httpRequest, HttpContext httpContext) {
-        String auth = "${ApplicationHolder.application.config.ZenDeskLoginEmail}:${ApplicationHolder.application.config.ZenDeskLoginPass}"
+        String auth = "${Holders.grailsApplication.config.ZenDeskLoginEmail}:${Holders.grailsApplication.config.ZenDeskLoginPass}"
         String enc_auth = auth.bytes.encodeBase64().toString()
         httpRequest.addHeader('Authorization', 'Basic ' + enc_auth);
       }
@@ -56,7 +56,7 @@ class ZenDeskSyncService {
       def cp_category_id = null
       if ( cp != null ) {
         if ( cp.categoryId == null ) {
-          cp.categoryId = lookupOrCreateZenDeskCategory(http,"${cp.name} ( ${ApplicationHolder.application.config.kbplusSystemId} )", current_categories);
+          cp.categoryId = lookupOrCreateZenDeskCategory(http,"${cp.name} ( ${Holders.grailsApplication.config.kbplusSystemId} )", current_categories);
           cp.save(flush:true);
         }
         pkg.forumId = createForum(http,pkg,cp.categoryId)
@@ -66,7 +66,7 @@ class ZenDeskSyncService {
     }
 
 
-    def systemObject = SystemObject.findBySysId(ApplicationHolder.application.config.kbplusSystemId)
+    def systemObject = SystemObject.findBySysId(Holders.grailsApplication.config.kbplusSystemId)
     if ( systemObject.announcementsForumId == null ) {
       systemObject.announcementsForumId = createSysForum(http);
       systemObject.save();
@@ -95,7 +95,7 @@ class ZenDeskSyncService {
                 def system_id = pkg_info[0][3]
     
                 // Only hook up forums if they correspond to our local system identifier
-                if ( system_id == ApplicationHolder.application.config.kbplusSystemId ) {
+                if ( system_id == Holders.grailsApplication.config.kbplusSystemId ) {
                   // Lookup package with package_id
                     def pkg = Package.get(Long.parseLong(package_id))
                   if ( pkg != null ) {
@@ -108,7 +108,7 @@ class ZenDeskSyncService {
                 }
               }
               else if ( f.name == 'Announcements' ) {
-                def systemObject = SystemObject.findBySysId(ApplicationHolder.application.config.kbplusSystemId)
+                def systemObject = SystemObject.findBySysId(Holders.grailsApplication.config.kbplusSystemId)
                 if ( systemObject.announcementsForumId == null ) {
                   systemObject.announcementsForumId = f.id
                   systemObject.save();
@@ -139,7 +139,7 @@ class ZenDeskSyncService {
     //   -H "Content-Type: application/json" -X POST \
     //   -d '{"forum": {"name": "My Forum", "forum_type": "articles", "access": "logged-in users", "category_id":"xx"  }}' \
     //   -v -u {email_address}:{password}
-    def forum_name = pkg.name+" (Package ${pkg.id} from ${ApplicationHolder.application.config.kbplusSystemId})".toString()
+    def forum_name = pkg.name+" (Package ${pkg.id} from ${Holders.grailsApplication.config.kbplusSystemId})".toString()
     def forum_desc = 'Questions and discussions relating to package :'+pkg.name.toString()
 
     log.debug("Create forum: ${forum_name}, ${forum_desc}, ${categoryId}");
@@ -151,7 +151,7 @@ class ZenDeskSyncService {
                                     'access': 'everybody', // 'logged-in users'
                                     'category_id' : "${categoryId}".toString(),
                                     'description' : forum_desc//,
-                                    // 'tags' : [ 'kbpluspkg' , "pkg:${pkg.id}".toString(), ApplicationHolder.application.config.kbplusSystemId.toString()  ]  
+                                    // 'tags' : [ 'kbpluspkg' , "pkg:${pkg.id}".toString(), Holders.grailsApplication.config.kbplusSystemId.toString()  ]  
                                   ] 
                       ]) { resp, json ->
       log.debug("Create forum Result: ${resp.status}, ${json}");
@@ -169,7 +169,7 @@ class ZenDeskSyncService {
                                     'forum_type': 'articles', // 'questions', 
                                     'access': 'everybody', // 'logged-in users'
                                     'description' : 'Announcements' //,
-                                    // 'tags' : [ 'kbpluspkg' , "pkg:${pkg.id}".toString(), ApplicationHolder.application.config.kbplusSystemId.toString()  ]  
+                                    // 'tags' : [ 'kbpluspkg' , "pkg:${pkg.id}".toString(), Holders.grailsApplication.config.kbplusSystemId.toString()  ]  
                                   ]
                       ]) { resp, json ->
       log.debug("Create forum Result: ${resp.status}, ${json}");
@@ -241,11 +241,11 @@ class ZenDeskSyncService {
     def sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
     if ( 1==1 ) { // if ( now - last_forum_check > intervalms ) {
       try {
-        def http = new RESTClient(ApplicationHolder.application.config.ZenDeskBaseURL)
+        def http = new RESTClient(Holders.grailsApplication.config.ZenDeskBaseURL)
 
         http.client.addRequestInterceptor( new HttpRequestInterceptor() {
           void process(HttpRequest httpRequest, HttpContext httpContext) {
-            String auth = "${ApplicationHolder.application.config.ZenDeskLoginEmail}:${ApplicationHolder.application.config.ZenDeskLoginPass}"
+            String auth = "${Holders.grailsApplication.config.ZenDeskLoginEmail}:${Holders.grailsApplication.config.ZenDeskLoginPass}"
             String enc_auth = auth.bytes.encodeBase64().toString()
             httpRequest.addHeader('Authorization', 'Basic ' + enc_auth);
           }
@@ -284,11 +284,11 @@ class ZenDeskSyncService {
   def postTopicCommentInForum(text, forumId, topicName, topicBody) {
     log.debug("postTopicCommentInForum ${forumId}");
     try {
-        def http = new RESTClient(ApplicationHolder.application.config.ZenDeskBaseURL)
+        def http = new RESTClient(Holders.grailsApplication.config.ZenDeskBaseURL)
 
         http.client.addRequestInterceptor( new HttpRequestInterceptor() {
           void process(HttpRequest httpRequest, HttpContext httpContext) {
-            String auth = "${ApplicationHolder.application.config.ZenDeskLoginEmail}:${ApplicationHolder.application.config.ZenDeskLoginPass}"
+            String auth = "${Holders.grailsApplication.config.ZenDeskLoginEmail}:${Holders.grailsApplication.config.ZenDeskLoginPass}"
             String enc_auth = auth.bytes.encodeBase64().toString()
             httpRequest.addHeader('Authorization', 'Basic ' + enc_auth);
           }
