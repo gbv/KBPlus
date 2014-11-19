@@ -1,4 +1,4 @@
-// KBPlusApp.gsp.js
+// KBPlusApp.js
 //
 $(document).ready(function() {
 
@@ -19,7 +19,7 @@ $(document).ready(function() {
     placeholder: "Search for...",
     minimumInputLength: 1,
     ajax: { // instead of writing the function to execute the request we use Select2's convenient helper
-      url: "<g:createLink controller='ajax' action='lookup'/>",
+      url: kbplus.links.ajaxLookup,
       dataType: 'json',
       data: function (term, page) {
           return {
@@ -49,7 +49,7 @@ $(document).ready(function() {
 function getContent() {
     return $.ajax({
         type: "GET",
-        url: "<g:createLink controller='spotlight' action='index'/>",
+        url: kbplus.links.spotlight + "index",
         cache: false,
         async: false
     }).responseText;

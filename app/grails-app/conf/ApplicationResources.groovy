@@ -37,11 +37,12 @@ modules = {
     resource url:'js/dataTables.colVis.min.js'
     resource url:'js/dataTables.fixedColumns.min.js'
     resource url:'js/dataTables.scroller.js'
-    resource url:'js/kbplusapp.js.gsp'
+    resource url:'js/kbplusapp.js'
     resource url:'js/jquery.dotdotdot.min.js'
     resource url:'https://assets.zendesk.com/external/zenbox/v2.6/zenbox.js'
     
   }
+  
   annotations {
     dependsOn 'kbplus'
     dependsOn 'font-awesome'
@@ -64,5 +65,29 @@ modules = {
     dependsOn 'font-awesome'
     resource url:'css/onix.css'
     resource url:'js/onix.js'
+  }
+  
+  /* 
+   * The below overrides are needed to correct the plugin resources used by kbplus,
+   * when the asset-pipeline is present. When missing plugins are detected we need to
+   * remove the /plugins/{plugin-name}/ from the uri and instead begin with the directory
+   * name that is the first child of the web-inf folder in the plugin.
+   */
+  overrides {
+      
+    'jquery' {
+      resource 'id': 'js',
+       url: "js/jquery/jquery-1.11.1.min.js"
+    }
+
+    'jquery-dev' {
+      resource 'id': 'js',
+       url: "js/jquery/jquery-1.11.1.min.js"
+    }
+    
+    'font-awesome' {
+      resource 'id' : [plugin: 'font-awesome-resources', dir: 'css', file: 'font-awesome.css'],
+       url: 'css/font-awesome.css'
+    }
   }
 }
