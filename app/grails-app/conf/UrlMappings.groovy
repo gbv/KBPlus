@@ -15,6 +15,8 @@ class UrlMappings {
 
     "/ajax/$action?/$id?"(controller:'ajax')
 
+    "/oai/$id"(controller:'oai',action:'index')
+
     // "/"(controller:"home")
     "/"(view:"/publichome")
 

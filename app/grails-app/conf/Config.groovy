@@ -342,20 +342,26 @@ remove this line */
 quartzHeartbeat = 'Never'
 // grails.databinding.dateFormats = ['MMddyyyy', 'yyyy-MM-dd HH:mm:ss.S', "yyyy-MM-dd'T'hh:mm:ss'Z'"]
 
-
-// Added by the Api Toolkit plugin:
-apitoolkit.apiName = 'api'
-apitoolkit.apichain.limit=3
-apitoolkit.attempts = 5
-apitoolkit.chaining.enabled=true
-apitoolkit.batching.enabled=true
-apitoolkit.localAuth.enabled=false
-apitoolkit.user.roles = ['ROLE_USER']
-apitoolkit.admin.roles = ['ROLE_ROOT','ROLE_ADMIN']
-
 // Added by the Webhook plugin:
 webhook.attempts = 5
 webhook.authorities = ['ROLE_ROOT','ROLE_ADMIN']
 webhook.services = []
 webhook.domain = 'com.k_int.kbplus.auth.Webhook'
 webhook.controller = 'com.k_int.kbplus.auth.WebhookController'
+
+webhook.services = ['PublicExport']
+webhook.authorities = ['ROLE_ROOT','ROLE_ADMIN']
+
+defaultOaiConfig = [
+  lastModified:'lastUpdated',
+  schemas:[
+    'oai_dc':[
+      type:'method',
+      methodName:'toOaiDcXml',
+      schema:'http://www.openarchives.org/OAI/2.0/oai_dc.xsd',
+      metadataNamespaces: [
+        '_default_' : 'http://www.openarchives.org/OAI/2.0/oai_dc/',
+        'dc'        : "http://purl.org/dc/elements/1.1/"
+      ]],
+  ]
+]

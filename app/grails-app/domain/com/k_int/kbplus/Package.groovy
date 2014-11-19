@@ -429,4 +429,24 @@ class Package {
     result
   }
 
+  @Transient
+  static def oaiConfig = [
+    id:'packages',
+    textDescription:'Package repository for KBPlus',
+    query:" from Package as o",
+    // query:" from Package as o where o.status.value != 'Deleted'",
+    pageSize:3
+  ]
+
+  /**
+   *  Render this package as OAI_dc
+   */
+  @Transient
+  def toOaiDcXml(builder, attr) {
+    builder.'dc'(attr) {
+      'dc:title' (name)
+    }
+  }
+
+
 }
