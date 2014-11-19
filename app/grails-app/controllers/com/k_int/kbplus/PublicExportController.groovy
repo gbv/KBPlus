@@ -136,7 +136,13 @@ class PublicExportController {
     }
   }
 
+  def packages() {
+    def result=[:]
+    result
+  }
+
   def pkg() {
+
     log.debug("package export id:${params.id} format=${response.format}");
     def result = [:]
 
