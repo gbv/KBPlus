@@ -157,6 +157,8 @@ grails.project.dependency.resolution = {
         runtime ":quartz:1.0.1"
         runtime ":rest:0.8"
         compile ":grails-melody:1.53.0"
+        compile ":webhook:0.9.1.6"
+        // compile ":api-toolkit:2.2"
         // runtime "com.k-int:domain-model-oai-pmh:0.1"
     }
 }

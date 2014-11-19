@@ -342,3 +342,20 @@ remove this line */
 quartzHeartbeat = 'Never'
 // grails.databinding.dateFormats = ['MMddyyyy', 'yyyy-MM-dd HH:mm:ss.S', "yyyy-MM-dd'T'hh:mm:ss'Z'"]
 
+
+// Added by the Api Toolkit plugin:
+apitoolkit.apiName = 'api'
+apitoolkit.apichain.limit=3
+apitoolkit.attempts = 5
+apitoolkit.chaining.enabled=true
+apitoolkit.batching.enabled=true
+apitoolkit.localAuth.enabled=false
+apitoolkit.user.roles = ['ROLE_USER']
+apitoolkit.admin.roles = ['ROLE_ROOT','ROLE_ADMIN']
+
+// Added by the Webhook plugin:
+webhook.attempts = 5
+webhook.authorities = ['ROLE_ROOT','ROLE_ADMIN']
+webhook.services = []
+webhook.domain = 'com.k_int.kbplus.auth.Webhook'
+webhook.controller = 'com.k_int.kbplus.auth.WebhookController'
