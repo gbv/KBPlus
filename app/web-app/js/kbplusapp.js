@@ -49,7 +49,7 @@ $(document).ready(function() {
 function getContent() {
     return $.ajax({
         type: "GET",
-        url: kbplus.links.spotlight + "index",
+        url: kbplus.links.spotlight,
         cache: false,
         async: false
     }).responseText;
