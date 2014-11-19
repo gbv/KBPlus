@@ -78,7 +78,7 @@ This work is published from:
         </tbody>
       </table>
       <div class="pagination">
-        <bootstrap:paginate  action="list" controller="packageDetails" params="${params}" next="Next" prev="Prev" max="${max}" total="${packageInstanceTotal?:0}" />
+        <bootstrap:paginate  action="packages" controller="publicExport" params="${params}" next="Next" prev="Prev" max="${max}" total="${packageInstanceTotal?:0}" />
       </div>
 
         </div>
