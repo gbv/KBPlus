@@ -9,8 +9,8 @@
       // generate vars we can use in the javascript later on in the file.
       window.kbplus = {
         "links" : {
-          "spotlight" : ${ g.createLink( controller:'spotlight' ) },
-          "ajaxLookup": ${ g.createLink( controller:'ajax', action: 'lookup' ) }
+          "spotlight" : "${ g.createLink( controller:'spotlight' ) }",
+          "ajaxLookup": "${ g.createLink( controller:'ajax', action: 'lookup' ) }"
         }
       }
     </script>
