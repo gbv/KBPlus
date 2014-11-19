@@ -77,12 +77,12 @@ modules = {
       
     'jquery' {
       resource 'id': 'js',
-       url: "js/jquery/jquery-1.11.0.min.js"
+       url: "js/jquery/jquery-1.11.1.min.js"
     }
 
     'jquery-dev' {
       resource 'id': 'js',
-       url: "js/jquery/jquery-1.11.0.min.js"
+       url: "js/jquery/jquery-1.11.1.min.js"
     }
     
     'font-awesome' {
