@@ -138,6 +138,25 @@ class PublicExportController {
 
   def packages() {
     def result=[:]
+    log.debug("publicExport/packages - parameters: ${params}")
+    if(params.q && params.q.size() > 1){
+      result.max = params.max ? Integer.parseInt(params.max) : 25;
+      result.offset = params.offset ? Integer.parseInt(params.offset) : 0;
+
+      def deleted_package_status =  RefdataCategory.lookupOrCreate( 'Package Status', 'Deleted' );
+      def qry_params = [params.q, deleted_package_status]
+
+      def base_qry = "from Package as p where lower(p.name) like ? and not ( p.packageStatus = ? )"
+      result.packageInstanceTotal =  Package.executeQuery("select count(p) ${base_qry}", qry_params )[0]
+
+      result.packageInstanceList = Package.executeQuery("select p ${base_qry}", qry_params,[max:result.max, offset:result.offset])
+      if(result.packageInstanceTotal == 0){
+        flash.message = "No packages found matching the name ${params.q}. Try using the wildcard character '%'."
+      }
+    }else{
+      flash.message = "Package name must be at least two characters long."
+    }
+
     result
   }
 
