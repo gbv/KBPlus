@@ -10,6 +10,17 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title><g:layoutTitle default="${meta(name: 'app.name')}"/></title>
+    
+    <script type="text/javascript">
+      // generate vars we can use in the javascript later on in the file.
+      window.kbplus = {
+        "links" : {
+          "spotlight" : ${ g.createLink( controller:'spotlight' ) },
+          "ajaxLookup": ${ g.createLink( controller:'ajax', action: 'lookup' ) }
+        }
+      }
+    </script>
+    
     <meta name="description" content="">
     <meta name="viewport" content="initial-scale = 1.0">
 
