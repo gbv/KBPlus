@@ -435,7 +435,16 @@ class Package {
     textDescription:'Package repository for KBPlus',
     query:" from Package as o",
     // query:" from Package as o where o.status.value != 'Deleted'",
-    pageSize:3
+    pageSize:3,
+    sets:[
+      'contentProvider':[
+                          joins:['orgLinks':'o.orgs'],
+                          clauses:[
+                            [prop:'orgLinks.org.id',valTp:'param'],
+                            [prop:'orgLinks.roleType.value',valTp:'static',value:'ContentProvider'],
+                          ]
+                        ]   // o.orgs.org = ? and o.orgs.roleType.value='Content Provider'
+    ]
   ]
 
   /**
