@@ -325,6 +325,17 @@ class OaiController {
       // def query = " from Package as p where p.status.value != 'Deleted'"
       def query = result.oaiConfig.query
 
+      def setComponents = params.set?.split('.');
+      def setConfig = setComponents ? result.oaiConfig.sets[setComponents] : null;
+
+      if ( setConfig ) {
+        // Add any join clauses defined by set config
+        setConfig.joins.each { k, v ->
+          query += "join ${v} as ${k} "
+        }
+        
+      }
+
       if ((params.from != null)&&(params.from.length()>0)) {
         query += ' and o.lastUpdated > ?'
         query_params.add(sdf.parse(params.from))
@@ -335,8 +346,7 @@ class OaiController {
       }
 
       if ( params.set != null ) {
-        query += ' and o.identifier = ? '
-        query_params.add(params.set)
+        // Add any restrictions defined by set config
       }
 
       query += ' order by o.lastUpdated'
