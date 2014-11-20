@@ -325,15 +325,35 @@ class OaiController {
       // def query = " from Package as p where p.status.value != 'Deleted'"
       def query = result.oaiConfig.query
 
-      def setComponents = params.set?.split('.');
-      def setConfig = setComponents ? result.oaiConfig.sets[setComponents] : null;
+      def setComponents = params.set ? params.set.split('\\.') : null;
+
+      log.debug("setComponents: ${params.set} ${setComponents}");
+
+      def setConfig = setComponents ? result.oaiConfig.sets[setComponents[0]] : null;
 
       if ( setConfig ) {
         // Add any join clauses defined by set config
         setConfig.joins.each { k, v ->
-          query += "join ${v} as ${k} "
+          query += " join ${v} as ${k} "
         }
-        
+      }
+
+      query += ' where 1=1 '
+
+      if ( setConfig ) {
+        // Add any join clauses defined by set config
+        setConfig.clauses.each { c ->
+          log.debug("Add clause ${c}");
+          switch ( c.valTp ) {
+            case 'param':
+              query += " and ${c.prop} = ${setComponents[1]}";
+              break;
+            case 'static':
+              query += " and ${c.prop} = ?";
+              query_params.add(c.value);
+              break;
+          }
+        }
       }
 
       if ((params.from != null)&&(params.from.length()>0)) {
@@ -351,7 +371,8 @@ class OaiController {
 
       query += ' order by o.lastUpdated'
 
-      log.debug("prefix handler for ${metadataPrefix} is ${prefixHandler}");
+      log.debug("prefix handler for ${metadataPrefix} is ${prefixHandler} ${query} ${query_params}");
+
       def rec_count = Package.executeQuery("select count(o) ${query}",query_params)[0];
       def records = Package.executeQuery("select o ${query}",query_params,[offset:offset,max:max])
 
