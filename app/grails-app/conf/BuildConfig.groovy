@@ -13,6 +13,14 @@ grails.project.source.level = 1.7
 //    console: [maxMemory: 768, minMemory: 64, debug: false, maxPerm: 256]
 // ]
 
+/* Grails forks the JVM when running run app etc. Adding jvm parameter here will allow us to
+ * determine whether the run-app has been used
+ */
+grails.project.fork = [
+  run : [jvmArgs: ["-DnoneWarExec=true"]],
+  test : [jvmArgs: ["-DnoneWarExec=true"]]
+]
+
 grails.project.dependency.resolver = "maven"
 
 grails.project.dependency.resolution = {

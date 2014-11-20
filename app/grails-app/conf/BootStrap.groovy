@@ -13,8 +13,10 @@ class BootStrap {
   // def docstoreService
 
   def init = { servletContext ->
+    
+    log.debug ("${'true'.equalsIgnoreCase(System.getProperty('noneWarExec', 'false')) ? 'None ' : ''}war-based execution" )
 
-      log.error("Sys id: ${grailsApplication.config.kbplusSystemId}")
+    log.error("Sys id: ${grailsApplication.config.kbplusSystemId}")
   
     if ( grailsApplication.config.kbplusSystemId != null ) {
       def system_object = SystemObject.findBySysId(grailsApplication.config.kbplusSystemId) ?: new SystemObject(sysId:grailsApplication.config.kbplusSystemId).save(flush:true);

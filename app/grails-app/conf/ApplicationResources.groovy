@@ -74,20 +74,23 @@ modules = {
    * name that is the first child of the web-inf folder in the plugin.
    */
   overrides {
-      
-    'jquery' {
-      resource 'id': 'js',
-       url: "js/jquery/jquery-1.11.1.min.js"
-    }
-
-    'jquery-dev' {
-      resource 'id': 'js',
-       url: "js/jquery/jquery-1.11.1.min.js"
-    }
     
-    'font-awesome' {
-      resource 'id' : [plugin: 'font-awesome-resources', dir: 'css', file: 'font-awesome.css'],
-       url: 'css/font-awesome.css'
+    if ("true".equalsIgnoreCase(System.getProperty("noneWarExec", "false"))) {
+      
+      'jquery' {
+        resource 'id': 'js',
+         url: "js/jquery/jquery-1.11.1.min.js"
+      }
+  
+      'jquery-dev' {
+        resource 'id': 'js',
+         url: "js/jquery/jquery-1.11.1.min.js"
+      }
+      
+      'font-awesome' {
+        resource 'id' : [plugin: 'font-awesome-resources', dir: 'css', file: 'font-awesome.css'],
+         url: 'css/font-awesome.css'
+      }
     }
   }
 }
