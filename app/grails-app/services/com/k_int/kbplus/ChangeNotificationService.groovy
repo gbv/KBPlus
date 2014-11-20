@@ -10,6 +10,7 @@ class ChangeNotificationService {
   def executorService
   def genericOIDService
   def zenDeskSyncService
+  def webhookService
 
   // N,B, This is critical for this service as it's called from domain object OnChange handlers
   static transactional = false;
@@ -135,6 +136,9 @@ class ChangeNotificationService {
                                                 dateCreated:new Date(),
                                                 user:User.findByUsername('admin')).save();
 
+                  break;
+                case 'webhooks':
+                  webhookService.postData('PublicExport', announcement_content, 'index')
                   break;
                 default:
                   break;

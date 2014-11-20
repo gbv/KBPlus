@@ -255,7 +255,8 @@ class Package {
   def getNotificationEndpoints() {
     [
       [ service:'zendesk.forum', remoteid:this.forumId ],
-      [ service:'announcements' ]
+      [ service:'announcements' ],
+      [ service:'webhooks' ],
     ]
   }
 
