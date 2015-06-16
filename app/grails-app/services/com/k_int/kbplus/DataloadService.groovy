@@ -21,6 +21,7 @@ class DataloadService {
   def mongoService
   def sessionFactory
   def edinaPublicationsAPIService
+  def zdbAPIService
   def propertyInstanceMap = org.codehaus.groovy.grails.plugins.DomainClassGrailsPlugin.PROPERTY_INSTANCE_MAP
   def grailsApplication
 
@@ -548,45 +549,97 @@ class DataloadService {
 
   def doTitleAugment() {
     TitleInstance.findAll().each { ti ->
-      if ( ti.getIdentifierValue('SUNCAT' ) == null ) {
-        def lookupResult = edinaPublicationsAPIService.lookup(ti.title)
-        if ( lookupResult ) {
-          def record = lookupResult.records.record
-          if ( record ) {
-            boolean matched = false;
-            def suncat_identifier = null;
-            record.modsCollection.mods.identifier.each { id ->
-              if ( id.text().equalsIgnoreCase(ti.getIdentifierValue('ISSN')) || id.text().equalsIgnoreCase(ti.getIdentifierValue('eISSN'))  ) {
-                matched = true
-              }
-
-              if ( id.@type == 'suncat' ) {
-                suncat_identifier = id.text();
-              }
-            }
-
-            if ( matched && suncat_identifier ) {
-              log.debug("set suncat identifier to ${suncat_identifier}");
-              def canonical_identifier = Identifier.lookupOrCreateCanonicalIdentifier('SUNCAT',suncat_identifier);
-              ti.ids.add(new IdentifierOccurrence(identifier:canonical_identifier, ti:ti));
-              ti.save(flush:true);
-            }
-            else {
-              log.debug("No match for title ${ti.title}, ${ti.id}");
-            }
-          }
-          else {
-          }
-        }
-        else {
-        }
-        synchronized(this) {
-          Thread.sleep(250);
-        }
+      // augmentSuncat(ti)
+      augmentZdbid(ti)
+      synchronized(this) {
+        Thread.sleep(250);
       }
     }
+    log.debug("doTitleAugment returning");
   }
 
+  def augmentSuncat(ti) {
+    if ( ti.getIdentifierValue('SUNCAT') != null ) {
+      return
+    }
+    def lookupResult = edinaPublicationsAPIService.lookup(ti.title)
+    if ( ! lookupResult ) {
+      return
+    }
+    def record = lookupResult.records.record
+    if ( ! record ) {
+      return
+    }
+    boolean matched = false;
+    def suncat_identifier = null;
+    record.modsCollection.mods.identifier.each { id ->
+      if ( id.text().equalsIgnoreCase(ti.getIdentifierValue('ISSN')) ||
+           id.text().equalsIgnoreCase(ti.getIdentifierValue('eISSN'))  ) {
+        matched = true
+      }
+
+      if ( id.@type == 'suncat' ) {
+        suncat_identifier = id.text();
+      }
+    }
+
+    if ( ! matched ) {
+      log.debug("No match for title ${ti.title}, ${ti.id}")
+    } else if ( ! suncat_identifier ) {
+      log.debug("Match without suncat id for title ${ti.title}, ${ti.id}")
+    } else {
+      log.debug("set suncat identifier to ${suncat_identifier}");
+      def canonical_identifier = Identifier.lookupOrCreateCanonicalIdentifier('SUNCAT',suncat_identifier);
+      ti.ids.add(new IdentifierOccurrence(identifier:canonical_identifier, ti:ti));
+      ti.save(flush:true);
+    }
+  }
+  
+  def augmentZdbid(ti) {
+    if ( ti.getIdentifierValue('ZDBID') != null ) {
+      return
+    }
+    
+    def issn = ti.getIdentifierValue('eISSN') ?: ti.getIdentifierValue('ISSN')
+    if ( ! issn ) {
+      return
+    }
+    
+    def lookupResult = zdbAPIService.lookup(issn)
+    if ( ! lookupResult || lookupResult.records.record.size() == 0 ) {
+      log.debug("augmentZdbid (e)ISSN=${issn} not found at ZDB")
+      return
+    }
+    
+    for ( result in lookupResult.records.record ) {
+      try {
+        def record = result.recordData.record
+        
+        def field007 = record.controlfield.find{it.@tag == '007'}
+        if ( ! field007.text().startsWith('c') ) {
+          continue
+        }
+        
+        def field016 = record.datafield.findAll{it.@tag == "016"}.find {
+          it.subfield.find{it.@code == '2'} == 'DE-600'
+        }
+        if ( ! field016 ) {
+          continue
+        }
+        
+        def zdbid = field016.subfield.find{it.@code == 'a'}.text()
+        def identifier = Identifier.lookupOrCreateCanonicalIdentifier('ZDBID', zdbid);
+        ti.ids.add(new IdentifierOccurrence(identifier:identifier, ti:ti))
+        log.debug("augmentZdbid (e)ISSN=${issn}: added ZDBID=${zdbid}");
+        return
+      } catch ( e ) {
+        log.debug('augmentZdbid (e)ISSN=${issn}: ${e}')
+      }
+    }
+    
+    log.debug("augmentZdbid (e)ISSN=${issn} found at ZDB, but no ZDBID found");
+  }
+  
   def cleanUpGorm() {
     log.debug("Clean up GORM");
     def session = sessionFactory.currentSession
