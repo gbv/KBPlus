@@ -57,7 +57,10 @@
                   <tr>
                     <td>${io.id}</td>
                     <td>${io.identifier.ns.ns}</td>
-                    <td>${io.identifier.value}</td>
+                    <g:if test="${io.identifier.ns.ns == 'zdbid'}">
+                    <td><a href="http://ld.zdb-services.de/data/${io.identifier.value}.html">
+                    ${io.identifier.value}</a></td></g:if>
+                    <g:else><td>${io.identifier.value}</td></g:else>
                     <td><g:if test="${editable}"><g:link controller="ajax" action="deleteThrough" params='${[contextOid:"${ti.class.name}:${ti.id}",contextProperty:"ids",targetOid:"${io.class.name}:${io.id}"]}'>Delete Identifier</g:link></g:if></td>
                   </tr>
                 </g:each>
