@@ -71,7 +71,11 @@
                           </td>
                           <td>
                             <g:each in="${hit.source.identifiers}" var="id">
-                              ${id.type}:${id.value}<br/>
+                              <g:if test="${id.type == 'zdbid'}">
+                                <a href="http://ld.zdb-services.de/data/${id.value}.html">${id.type}:${id.value}</a><br/>
+                              </g:if><g:else>
+                                ${id.type}:${id.value}<br/>
+                              </g:else>
                             </g:each>
                           </td>
                         </tr>

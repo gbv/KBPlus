@@ -637,6 +637,11 @@ class DataloadService {
         }
         
         def zdbid = field016.subfield.find{it.@code == 'a'}.text()
+        // 6-8 Ziffern, Minuszeichen, Prüfziffer (0-9 oder x oder X)
+        if (! (zdbid ==~ /\d{6,8}-[0-9xX]/)) {
+          log.debug("augmentZdbid (e)ISSN=${issn}: invalid ZDBID number format");
+          continue
+        }
         def identifier = Identifier.lookupOrCreateCanonicalIdentifier('ZDBID', zdbid);
         ti.ids.add(new IdentifierOccurrence(identifier:identifier, ti:ti))
         log.debug("augmentZdbid (e)ISSN=${issn}: added ZDBID=${zdbid}");

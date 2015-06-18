@@ -47,7 +47,7 @@
             <table class="table table-bordered">
               <thead>
                 <tr>
-                  <th>ID</td>
+                  <th>ID</th>
                   <th>Identifier Namespace</th>
                   <th>Identifier</th>
                 </tr>
@@ -57,7 +57,10 @@
                   <tr>
                     <td>${io.id}</td>
                     <td>${io.identifier.ns.ns}</td>
-                    <td>${io.identifier.value}</td>
+                    <g:if test="${io.identifier.ns.ns == 'zdbid'}">
+                    <td><a href="http://ld.zdb-services.de/data/${io.identifier.value}.html">
+                    ${io.identifier.value}</a></td></g:if>
+                    <g:else><td>${io.identifier.value}</td></g:else>
                   </tr>
                 </g:each>
               </tbody>
@@ -68,7 +71,7 @@
             <table class="table table-bordered">
               <thead>
                 <tr>
-                  <th>ID</td>
+                  <th>ID</th>
                   <th>Org</th>
                   <th>Role</th>
                 </tr>
@@ -173,7 +176,7 @@
                     <td><g:simpleHiddenValue id="bulk_coverage_depth" name="bulk_coverage_depth"/>
                         - <input type="checkbox" name="clear_coverage_depth"/> (clear)
                     </td>
-                    <td/>
+                    <td></td>
                   </tr>
                   <tr>
                     <td colspan="6">
