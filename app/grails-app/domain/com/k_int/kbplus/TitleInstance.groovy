@@ -268,7 +268,12 @@ class TitleInstance {
         def id = Identifier.lookupOrCreateCanonicalIdentifier(i.key, i.value)
         if ( id != null ) {
           ids.add(id);
-
+          
+          def key = i.key.toLowerCase();
+          if (key == 'zdb' || key == 'zdbid') {
+            return    // ignore zdb/zdbid when matching title, continue to next identifier
+          }
+          
           def io = IdentifierOccurrence.findByIdentifier(id)
           if ( io && io.ti ) {
             if ( result == null ) {
