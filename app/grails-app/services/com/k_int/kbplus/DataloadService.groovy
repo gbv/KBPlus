@@ -133,8 +133,7 @@ class DataloadService {
       result.endDate = pkg.endDate
       def lastmod = pkg.lastUpdated ?: pkg.dateCreated
       if ( lastmod != null ) {
-        def formatter = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm")
-        result.lastModified = formatter.format(lastmod)
+        result.lastModified = lastmod
       }
 
       if ( pkg.startDate ) {
