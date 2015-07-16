@@ -27,6 +27,7 @@ class MyInstitutionsController {
     def transformerService
     def institutionsService
     def docstoreService
+    def tsvSuperlifterService
     static String INSTITUTIONAL_LICENSES_QUERY = " from License as l where exists ( select ol from OrgRole as ol where ol.lic = l AND ol.org = ? and ol.roleType = ? ) AND l.status.value != 'Deleted'"
 
     // Map the parameter names we use in the webapp with the ES fields
@@ -69,7 +70,7 @@ class MyInstitutionsController {
     def tipview() {
         log.debug("admin::tipview ${params}")
         def result = [:]
-       
+
         result.user = User.get(springSecurityService.principal.id)
         result.max = params.max ? Integer.parseInt(params.max) : result.user.defaultPageSize;
         result.offset = params.offset ? Integer.parseInt(params.offset) : 0;
@@ -89,21 +90,21 @@ class MyInstitutionsController {
               }
               if (params.search_for == "institution") {
                 institution {
-                  ilike("name", "%${params.search_str}%")         
+                  ilike("name", "%${params.search_str}%")
                 }
               }
              if (params.search_for == "provider") {
                 provider {
-                  ilike("name", "%${params.search_str}%")         
+                  ilike("name", "%${params.search_str}%")
                 }
              }
              if (params.search_for == "title") {
                 title {
-                  ilike("title", "%${params.search_str}%")         
+                  ilike("title", "%${params.search_str}%")
                 }
              }
              if(params.filter == "core" || !params.filter){
-               isNotEmpty('coreDates') 
+               isNotEmpty('coreDates')
              }else if(params.filter=='not'){
                 isEmpty('coreDates')
              }
@@ -149,6 +150,8 @@ class MyInstitutionsController {
         def result = [:]
         result.user = User.get(springSecurityService.principal.id)
         result.institution = Org.findByShortcode(params.shortcode)
+        result.transforms = grailsApplication.config.licenceTransforms
+
         if (!checkUserIsMember(result.user, result.institution)) {
             flash.error = "You do not have permission to view ${result.institution.name}. Please request access on the profile page";
             response.sendError(401)
@@ -163,7 +166,7 @@ class MyInstitutionsController {
 
         def date_restriction = null;
         def sdf = new java.text.SimpleDateFormat(session.sessionPreferences?.globalDateFormat)
- 
+
         if (params.validOn == null) {
             result.validOn = sdf.format(new Date(System.currentTimeMillis()))
             date_restriction = sdf.parse(result.validOn)
@@ -171,7 +174,7 @@ class MyInstitutionsController {
             result.validOn = sdf.format(new Date(System.currentTimeMillis()))
         } else {
             result.validOn = params.validOn
-     
+
             date_restriction = sdf.parse(params.validOn)
         }
 
@@ -207,7 +210,7 @@ class MyInstitutionsController {
             qry_params += propQuery.queryParam
             result.propertyFilterType = params.propertyFilterType
             result.propertyFilter = params.propertyFilter
-        } 
+        }
 
         if (date_restriction) {
             qry += " and l.startDate <= ? and l.endDate >= ? "
@@ -223,22 +226,39 @@ class MyInstitutionsController {
 
         result.licenseCount = License.executeQuery("select count(l) ${qry}", qry_params)[0];
         result.licenses = License.executeQuery("select l ${qry}", qry_params, [max: result.max, offset: result.offset]);
-
+        def filename = "${result.institution.name}_licences"
         withFormat {
             html result
 
             json {
-                response.setHeader("Content-disposition", "attachment; filename=\"${result.institution.name}_licences.json\"")
+                response.setHeader("Content-disposition", "attachment; filename=\"${filename}.json\"")
                 response.contentType = "application/json"
                 render (result as JSON)
             }
             csv {
-                response.setHeader("Content-disposition", "attachment; filename=${result.institution.name}_licences.csv")
+                response.setHeader("Content-disposition", "attachment; filename=\"${filename}.csv\"")
                 response.contentType = "text/csv"
 
                 def out = response.outputStream
-                exportService.StreamOutCurrentLicencesCSV(out, result)
+                exportService.StreamOutLicenceCSV(out, result,result.licenses)
                 out.close()
+            }
+            xml {
+                def doc = exportService.buildDocXML("Licences")
+
+                if(params.format_content=="subpkg"){
+                    exportService.addLicenceSubPkgXML(doc, doc.getDocumentElement(),result.licenses)
+                }else if(params.format_content=="subie"){
+                    exportService.addLicenceSubPkgTitleXML(doc, doc.getDocumentElement(),result.licenses)
+                }
+                if ((params.transformId) && (result.transforms[params.transformId] != null)) {
+                    String xml = exportService.streamOutXML(doc, new StringWriter()).getWriter().toString();
+                    transformerService.triggerTransform(result.user, filename, result.transforms[params.transformId], xml, response)
+                }else{
+                    response.setHeader("Content-disposition", "attachment; filename=\"${filename}.xml\"")
+                    response.contentType = "text/xml"
+                    exportService.streamOutXML(doc, response.outputStream)
+                }
             }
         }
     }
@@ -281,7 +301,7 @@ class MyInstitutionsController {
                 log.error("Error executing buildPropertySearchQuery. Definition type ${propDef.type} case not found. ")
         }
         query += ")"
-        
+
         result.query = query
         result.queryParam = queryParam
         result
@@ -548,6 +568,7 @@ class MyInstitutionsController {
             def startDate = sdf.parse(params.valid_from)
             def endDate = sdf.parse(params.valid_to)
 
+
             def new_sub = new Subscription(type: RefdataValue.findByValue("Subscription Taken"),
                     status: RefdataCategory.lookupOrCreate('Subscription Status', 'Current'),
                     name: params.newEmptySubName,
@@ -556,10 +577,23 @@ class MyInstitutionsController {
                     identifier: params.newEmptySubId,
                     isPublic: RefdataCategory.lookupOrCreate('YN', 'No'),
                     impId: java.util.UUID.randomUUID().toString())
+
             if (new_sub.save()) {
                 def new_sub_link = new OrgRole(org: result.institution,
                         sub: new_sub,
                         roleType: RefdataCategory.lookupOrCreate('Organisational Role', 'Subscriber')).save();
+
+                if ( params.newEmptySubId ) {
+                  def sub_id_components = params.newEmptySubId.split(':');
+                  if ( sub_id_components.length == 2 ) {
+                    def sub_identifier = Identifier.lookupOrCreateCanonicalIdentifier(sub_id_components[0],sub_id_components[1]);
+                    new_sub.ids.add(sub_identifier);
+                  }
+                  else {
+                    def sub_identifier = Identifier.lookupOrCreateCanonicalIdentifier('Unknown',params.newEmptySubId);
+                    new_sub.ids.add(sub_identifier);
+                  }
+                }
 
                 redirect controller: 'subscriptionDetails', action: 'index', id: new_sub.id
             } else {
@@ -654,7 +688,7 @@ class MyInstitutionsController {
             // render(status: '401', text:"You do not have permission to access ${org.name}. Please request access on the profile page");
             return;
         }
-       
+
         def baseLicense = params.baselicense ? License.get(params.baselicense) : null;
 
         if (!baseLicense?.hasPerm("view", user)) {
@@ -666,7 +700,7 @@ class MyInstitutionsController {
             def copyLicence = institutionsService.copyLicence(params)
             if (copyLicence.hasErrors() ) {
                 log.error("Problem saving license ${copyLicence.errors}");
-                render view: 'editLicense', model: [licenseInstance: copyLicence]                        
+                render view: 'editLicense', model: [licenseInstance: copyLicence]
             }else{
                 flash.message = message(code: 'license.created.message', args: [message(code: 'licence', default: 'Licence'), copyLicence.id])
                 redirect controller: 'licenseDetails', action: 'index', params: params, id: copyLicence.id
@@ -750,7 +784,7 @@ class MyInstitutionsController {
         def basePackage = Package.get(params.packageId);
 
         if (basePackage) {
-            // 
+            //
             def add_entitlements = (params.createSubAction == 'copy' ? true : false)
 
             def new_sub = basePackage.createSubscription("Subscription Taken",
@@ -776,7 +810,7 @@ class MyInstitutionsController {
 
     @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
     def currentTitles() {
-        // define if we're dealing with a HTML request or an Export (i.e. XML or HTML) 
+        // define if we're dealing with a HTML request or an Export (i.e. XML or HTML)
         boolean isHtmlOutput = !params.format || params.format.equals("html")
 
         def result = [:]
@@ -809,7 +843,7 @@ class MyInstitutionsController {
         // Set offset and max
         result.max = params.max ? Integer.parseInt(params.max) : result.user.defaultPageSize;
         result.offset = params.offset ? Integer.parseInt(params.offset) : 0;
- 
+
         def filterSub = params.list("filterSub")
         if (filterSub.contains("all")) filterSub = null
         def filterPvd = params.list("filterPvd")
@@ -941,7 +975,7 @@ class MyInstitutionsController {
     def currentTitlesOld() {
         def verystarttime = exportService.printStart("currentTitles")
 
-        // define if we're dealing with a HTML request or an Export (i.e. XML or HTML) 
+        // define if we're dealing with a HTML request or an Export (i.e. XML or HTML)
         boolean isHtmlOutput = !params.format || params.format.equals("html")
 
         def result = [:]
@@ -1113,9 +1147,9 @@ ${title_query} ${title_query_grouping} ${title_query_ordering}",
         // Query the list of Subscriptions
         def sub_params = [institution: result.institution]
         def sub_qry = """
-Subscription AS s INNER JOIN s.orgRelations AS o 
-WHERE o.roleType.value = 'Subscriber' 
-AND o.org = :institution 
+Subscription AS s INNER JOIN s.orgRelations AS o
+WHERE o.roleType.value = 'Subscriber'
+AND o.org = :institution
 AND s.status.value != 'Deleted' """
         if (date_restriction) {
             sub_qry += "\nAND s.startDate <= :date_restriction AND s.endDate >= :date_restriction "
@@ -1132,25 +1166,25 @@ ORDER BY role.org.name", sub_params);
 
         // Query the list of Host Platforms
         result.hostplatforms = IssueEntitlement.executeQuery("""
-SELECT distinct(ie.tipp.platform) 
-FROM IssueEntitlement AS ie, ${sub_qry} 
-AND s = ie.subscription 
+SELECT distinct(ie.tipp.platform)
+FROM IssueEntitlement AS ie, ${sub_qry}
+AND s = ie.subscription
 ORDER BY ie.tipp.platform.name""", sub_params);
 
         // Query the list of Other Platforms
         result.otherplatforms = IssueEntitlement.executeQuery("""
-SELECT distinct(p.platform) 
-FROM IssueEntitlement AS ie 
-  INNER JOIN ie.tipp.additionalPlatforms as p, 
-  ${sub_qry}  
-AND s = ie.subscription 
+SELECT distinct(p.platform)
+FROM IssueEntitlement AS ie
+  INNER JOIN ie.tipp.additionalPlatforms as p,
+  ${sub_qry}
+AND s = ie.subscription
 ORDER BY p.platform.name""", sub_params);
 
         return result
     }
 
     /**
-     * This function will gather the different filters from the request parameters and 
+     * This function will gather the different filters from the request parameters and
      * will build the base of the query to gather all the information needed for the view page
      * according to the requested filtering.
      *
@@ -1178,7 +1212,7 @@ ORDER BY p.platform.name""", sub_params);
         title_query.append("FROM IssueEntitlement AS ie ")
         // Join with Org table if there are any Provider filters
         if (filterPvd) title_query.append("INNER JOIN ie.tipp.pkg.orgs AS role ")
-        // Join with the Platform table if there are any Host Platform filters 
+        // Join with the Platform table if there are any Host Platform filters
         if (filterHostPlat) title_query.append("INNER JOIN ie.tipp.platform AS hplat ")
         title_query.append(", Subscription AS s INNER JOIN s.orgRelations AS o ")
 
@@ -1231,18 +1265,18 @@ ORDER BY p.platform.name""", sub_params);
         // Host Other filtering
         if (filterOtherPlat) {
             title_query.append("""
-AND EXISTS ( 
-  FROM IssueEntitlement ie2 
-  WHERE EXISTS ( 
-    FROM ie2.tipp.additionalPlatforms AS ap 
-    WHERE ap.platform.id IN (:otherPlatform) 
-  ) 
-  AND ie2.tipp.title = ie.tipp.title 
+AND EXISTS (
+  FROM IssueEntitlement ie2
+  WHERE EXISTS (
+    FROM ie2.tipp.additionalPlatforms AS ap
+    WHERE ap.platform.id IN (:otherPlatform)
+  )
+  AND ie2.tipp.title = ie.tipp.title
 ) """)
             qry_params.otherPlatform = filterOtherPlat.collect(new ArrayList<Long>()) { Long.valueOf(it) }
             //Long.valueOf(params.filterOtherPlat)
         }
-        // 'Subscription valid on' filtering 
+        // 'Subscription valid on' filtering
         if (date_restriction) {
             title_query.append(" AND ie.subscription.startDate <= :date_restriction AND ie.subscription.endDate >= :date_restriction ")
             qry_params.date_restriction = date_restriction
@@ -1359,7 +1393,7 @@ AND EXISTS (
         result.basket = materialiseFolder(shopping_basket.items)
 
 
-        //Following are the ES stuff 
+        //Following are the ES stuff
         try {
             StringWriter sw = new StringWriter()
             def fq = null;
@@ -1410,7 +1444,7 @@ AND EXISTS (
             if(fq){
                 if(params.q) parms.q += " AND ";
                 params.q += " (${fq}) ";
-            } 
+            }
             result += ESSearchService.search(params)
         }
         catch (Exception e) {
@@ -1576,7 +1610,7 @@ AND EXISTS (
             if (sub instanceof Subscription) {
                 log.debug("Handling subscription: ${sub_info.sub_name}")
                 sub_info.putAll([sub_startDate : sub.startDate ? formatter.format(sub.startDate):null,
-                sub_endDate: sub.endDate ? formatter.format(sub.endDate) : null])               
+                sub_endDate: sub.endDate ? formatter.format(sub.endDate) : null])
                 sub.issueEntitlements.each { ie ->
                     // log.debug("IE");
                     if (!(ie.status?.value == 'Deleted')) {
@@ -1677,7 +1711,7 @@ AND EXISTS (
                         ie_info.tipp_id = ie.tipp.id;
                         def test_coreStatus =ie.coreStatusOn(new Date())
                         def formatted_date = formatter.format(new Date())
-                        ie_info.core_status = test_coreStatus?"True(${formatted_date})": test_coreStatus==null?"False(Never)":"False(${formatted_date})"                     
+                        ie_info.core_status = test_coreStatus?"True(${formatted_date})": test_coreStatus==null?"False(Never)":"False(${formatted_date})"
                         ie_info.core_status_on = formatted_date
                         ie_info.core_medium = ie.coreStatus
                         ie_info.startDate_d = ie.tipp.startDate ?: ie.tipp.derivedFrom?.startDate
@@ -1771,7 +1805,7 @@ AND EXISTS (
             cell.setCellValue(new HSSFRichTextString("Subscriber Name"));
             cell = row.createCell(cc++);
             cell.setCellValue(new HSSFRichTextString("Subscriber Shortcode"));
-           
+
             cell = row.createCell(cc++);
             cell.setCellValue(new HSSFRichTextString("Subscription Start Date"));
             cell = row.createCell(cc++);
@@ -1787,7 +1821,7 @@ AND EXISTS (
             cell.setCellValue(new HSSFRichTextString(inst.name));
             cell = row.createCell(cc++);
             cell.setCellValue(new HSSFRichTextString(inst.shortcode));
-            
+
             def subscription = m.sub_info.find{it.sub_startDate}
             cell = row.createCell(cc++);
             cell.setCellValue(new HSSFRichTextString("${subscription?.sub_startDate?:''}"));
@@ -2077,9 +2111,9 @@ AND EXISTS (
             if(original_sub_id){
                 original_sub = genericOIDService.resolveOID(original_sub_id)
                 if(!original_sub.hasPerm("view",user)){
-                    original_sub = null;  
+                    original_sub = null;
                     flash.error = "Can't access original subscription documents. Please verify you have the required access rights."
-                } 
+                }
             }
             result.additionalInfo = [sub_startDate:sub_startDate,sub_endDate:sub_endDate,sub_name:original_sub?.name?:'',sub_id:original_sub?.id?:'']
 
@@ -2186,7 +2220,7 @@ AND EXISTS (
         log.debug("entitlements...[${params.ecount}]");
 
         int ent_count = Integer.parseInt(params.ecount);
-     
+
         def sub_startDate = params.subscription?.copyStart ? parseDate(params.subscription?.start_date,possible_date_formats) : null
         def sub_endDate = params.subscription?.copyEnd ? parseDate(params.subscription?.end_date,possible_date_formats): null
         def copy_documents = params.subscription?.copy_docs && params.subscription.copyDocs
@@ -2222,7 +2256,7 @@ AND EXISTS (
         }
 
         new_subscription.save(flush: true);
-        if(copy_documents){   
+        if(copy_documents){
             String subOID =  params.subscription.copy_docs
             def sourceOID = "${new_subscription.getClass().getName()}:${subOID}"
             docstoreService.copyDocuments(sourceOID,"${new_subscription.getClass().getName()}:${new_subscription.id}")
@@ -2313,7 +2347,7 @@ AND EXISTS (
             }
         }
         log.debug("done entitlements...");
- 
+
         new_subscription.startDate = sub_startDate ?: earliest_start_date
         new_subscription.endDate = sub_endDate ?: latest_end_date
         new_subscription.save()
@@ -2430,11 +2464,12 @@ AND EXISTS (
         def lic_del = RefdataCategory.lookupOrCreate('License Status', 'Deleted');
         def sub_del = RefdataCategory.lookupOrCreate('Subscription Status', 'Deleted');
         def pkg_del = RefdataCategory.lookupOrCreate( 'Package Status', 'Deleted' );
-        result.num_todos = PendingChange.executeQuery("select count(distinct pc.oid) from PendingChange as pc left outer join pc.license as lic left outer join lic.status as lic_status left outer join pc.subscription as sub left outer join sub.status as sub_status left outer join pc.pkg as pkg left outer join pkg.packageStatus as pkg_status where pc.owner = ? and ((lic_status is null or lic_status!=?) and (sub_status is null or sub_status!=?) and (pkg_status is null or pkg_status!=?))", [result.institution,lic_del,sub_del,pkg_del])[0]
+        def pc_status = RefdataCategory.lookupOrCreate("PendingChangeStatus", "Pending")
+        result.num_todos = PendingChange.executeQuery("select count(distinct pc.oid) from PendingChange as pc left outer join pc.license as lic left outer join lic.status as lic_status left outer join pc.subscription as sub left outer join sub.status as sub_status left outer join pc.pkg as pkg left outer join pkg.packageStatus as pkg_status where pc.owner = ? and (pc.status = ? or pc.status is null) and ((lic_status is null or lic_status!=?) and (sub_status is null or sub_status!=?) and (pkg_status is null or pkg_status!=?))", [result.institution,pc_status, lic_del,sub_del,pkg_del])[0]
 
         log.debug("Count3=${result.num_todos}");
 
-        def change_summary = PendingChange.executeQuery("select distinct(pc.oid), count(pc), min(pc.ts), max(pc.ts) from PendingChange as pc left outer join pc.license as lic left outer join lic.status as lic_status left outer join pc.subscription as sub left outer join sub.status as sub_status left outer join pc.pkg as pkg left outer join pkg.packageStatus as pkg_status where pc.owner = ? and ((lic_status is null or lic_status!=?) and (sub_status is null or sub_status!=?) and (pkg_status is null or pkg_status!=?)) group by pc.oid", [result.institution,lic_del,sub_del,pkg_del], [max: result.max?:100, offset: result.offset?:0]);
+        def change_summary = PendingChange.executeQuery("select distinct(pc.oid), count(pc), min(pc.ts), max(pc.ts) from PendingChange as pc left outer join pc.license as lic left outer join lic.status as lic_status left outer join pc.subscription as sub left outer join sub.status as sub_status left outer join pc.pkg as pkg left outer join pkg.packageStatus as pkg_status where pc.owner = ? and (pc.status = ? or pc.status is null) and ((lic_status is null or lic_status!=?) and (sub_status is null or sub_status!=?) and (pkg_status is null or pkg_status!=?)) group by pc.oid", [result.institution,pc_status,lic_del,sub_del,pkg_del], [max: result.max?:100, offset: result.offset?:0]);
         result.todos = []
 
         change_summary.each { cs ->
@@ -2573,5 +2608,56 @@ AND EXISTS (
         render view: 'financeActions', model: result, params: [shortcode: params.shortcode]
     }
 
+    @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
+    def financeImport() {
+      def result = [:];
 
+      result.user        = User.get(springSecurityService.principal.id)
+      result.institution = Org.findByShortcode(params.shortcode)
+      def defaults = [ 'owner':result.institution];
+
+      if (request.method == 'POST'){
+        def input_stream = request.getFile("tsvfile")?.inputStream
+        result.loaderResult = tsvSuperlifterService.load(input_stream,
+                                                         grailsApplication.config.financialImportTSVLoaderMappings,
+                                                         params.dryRun=='Y'?true:false,
+                                                         defaults)
+      }
+      result
+    }
+
+    @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
+    def tip() {
+      def result = [:];
+      result.user        = User.get(springSecurityService.principal.id)
+      result.institution = Org.findByShortcode(params.shortcode)
+      result.tip = TitleInstitutionProvider.get(params.id)
+
+      if (request.method == 'POST' && result.tip ){
+        log.debug("Add usage ${params}")
+        def sdf = new SimpleDateFormat('yyyy-MM-dd');
+        def usageDate = sdf.parse(params.usageDate);
+        def cal = new GregorianCalendar()
+        cal.setTime(usageDate)
+        def fact = new Fact(
+          relatedTitle:result.tip.title,
+          supplier:result.tip.provider,
+          inst:result.tip.institution,
+          juspio:result.tip.title.getIdentifierValue('jusp'),
+          factFrom:usageDate,
+          factTo:usageDate,
+          factValue:params.usageValue,
+          factUid:java.util.UUID.randomUUID().toString(),
+          reportingYear:cal.get(Calendar.YEAR),
+          reportingMonth:cal.get(Calendar.MONTH),
+          factType:RefdataValue.get(params.factType)
+        ).save(flush:true, failOnError:true);
+
+      }
+
+      if ( result.tip ) {
+        result.usage = Fact.findAllByRelatedTitleAndSupplierAndInst(result.tip.title,result.tip.provider,result.tip.institution)
+      }
+      result
+    }
 }

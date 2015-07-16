@@ -21,6 +21,7 @@ class LicenseDetailsController {
   def exportService
   def institutionsService
   def pendingChangeService
+  def executorWrapperService
 
   @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
   def index() {
@@ -29,6 +30,7 @@ class LicenseDetailsController {
     result.user = User.get(springSecurityService.principal.id)
     // result.institution = Org.findByShortcode(params.shortcode)
     result.license = License.get(params.id)
+    result.transforms = grailsApplication.config.licenceTransforms
 
     if ( ! result?.license?.hasPerm("view",result.user) ) {
       log.debug("return 401....");
@@ -76,8 +78,9 @@ class LicenseDetailsController {
     }else{
       result.pendingChanges = pendingChanges.collect{PendingChange.get(it)}
     }
-
-
+    if(executorWrapperService.hasRunningProcess(result.license)){
+      result.processingpc = true
+    }
     result.availableSubs = getAvailableSubscriptions(result.license,result.user)
 
     withFormat {
@@ -92,22 +95,28 @@ class LicenseDetailsController {
       }
       xml {
         def doc = exportService.buildDocXML("Licences")
-        exportService.addLicencesIntoXML(doc, doc.getDocumentElement(), [result.license])
-        
-        if( ( params.transformId ) && ( result.transforms[params.transformId] != null ) ) {
-          String xml = exportService.streamOutXML(doc, new StringWriter()).getWriter().toString();
-          transformerService.triggerTransform(result.user, filename, result.transforms[params.transformId], xml, response)
-        }else{ // send the XML to the user
-          response.setHeader("Content-disposition", "attachment; filename=\"${filename}.xml\"")
-          response.contentType = "text/xml"
-          exportService.streamOutXML(doc, response.outputStream)
+        if(params.format_content=="subpkg"){
+            exportService.addLicenceSubPkgXML(doc, doc.getDocumentElement(),[result.license])
+        }else if(params.format_content=="subie"){
+            exportService.addLicenceSubPkgTitleXML(doc, doc.getDocumentElement(),[result.license])
+        }else if(!params.format_content){
+          exportService.addLicencesIntoXML(doc, doc.getDocumentElement(), [result.license])
         }
+        if ((params.transformId) && (result.transforms[params.transformId] != null)) {
+            String xml = exportService.streamOutXML(doc, new StringWriter()).getWriter().toString();
+            transformerService.triggerTransform(result.user, filename, result.transforms[params.transformId], xml, response)
+        }else{
+            response.setHeader("Content-disposition", "attachment; filename=\"${filename}.xml\"")
+            response.contentType = "text/xml"
+            exportService.streamOutXML(doc, response.outputStream)
+        }
+        
       }
       csv {
         response.setHeader("Content-disposition", "attachment; filename=\"${filename}.csv\"")
         response.contentType = "text/csv"
         def out = response.outputStream
-        exportService.StreamOutLicenceCSV(out,result.license)
+        exportService.StreamOutLicenceCSV(out,null,[result.license])
         out.close()
       }
     }
@@ -424,21 +433,6 @@ class LicenseDetailsController {
       redirect(action:'create');
     }
   }
-
-    @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
-    def onixpl() {
-        def user = User.get(springSecurityService.principal.id)
-        def license = License.get(params.id);
-        def onixplLicense = license.onixplLicense;
-        if (onixplLicense==null) return false;
-        if ( ! onixplLicense.hasPerm("view",user) ) {
-            log.debug("return 401....");
-            response.sendError(401);
-            return
-        }
-        def editable = onixplLicense.hasPerm("edit", user)
-        [license: license, onixplLicense: onixplLicense, user: user, editable: editable]
-    }
 
     @Secured(['ROLE_USER', 'IS_AUTHENTICATED_FULLY'])
     def unlinkLicense() {

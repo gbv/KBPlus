@@ -30,56 +30,134 @@ class ExportService {
 	 */
 
 
-	def StreamOutCurrentLicencesCSV(out,result){
-		out.withWriter { writer ->
-			writer.write("SEARCH TERMS\n")
-			writer.write("Institution,ValidOn,ReferenceSearch,LicenceProperty,LicencePropertyValue\n")
-			writer.write("${val(result.institution.name)},${val(result.validOn)},${val(result.keyWord)},${val(result.propertyFilterType)},${val(result.propertyFilter)}\n" )
-			writer.write("\n")
-			writer.write("ID, Licence Name, Licensor, Start Date, End Date,Subscriptions\n")
-			result.licenses.each{ lic ->
-				def startDate = lic.startDate ? formatter.format(lic.startDate) :''
-				def endDate = lic.endDate ? formatter.format(lic.endDate) : ''
-				def subs = lic.subscriptions.findAll{it.status?.value !='Deleted'}?.collect{"${it.id}:${it.name} "}
-				writer.write("${val(lic.id)},${val(lic.reference)},${val(lic.licensor?.name)},${val(startDate)},${val(endDate)},${val(subs)}\n")
-			}
 
-			writer.flush()
-			writer.close()
+	def StreamOutLicenceCSV(out,result,licences){
+		log.debug("StreamOutLicenceCSV - ${result} - ${licences}")
+		Set propertiesSet = new TreeSet();
+
+		def custProps = licences.each{ licence ->
+			propertiesSet.addAll(licence.customProperties.collect{ prop ->
+				prop.type.name
+			})
 		}
-
-	}
-	def StreamOutLicenceCSV(out,lic){
+		
 		out.withWriter{writer ->
-			writer.write("LicenceReference,NoticePeriod,LicenceURL,LicensorRef,RelatedOrg,LicenceProperties\n")
-			writer.write("${val(lic.reference)},${val(lic.noticePeriod)},${val(lic.licenseUrl)},${val(lic.licensorRef)}")
-			def orgLinks = []
-			lic.orgLinks.each{
-				orgLinks += "${it.roleType?.value}: ${it.org.name}"
+			//See if we are handling a currentLicences Search
+			if(result != null && (result.institution || result.validOn || result.propertyFilter || result.keyWord)){
+				writer.write("SEARCH TERMS\n")
+				writer.write("Institution,ValidOn,ReferenceSearch,LicenceProperty,LicencePropertyValue\n")
+				writer.write("${val(result.institution.name)},${val(result.validOn)},${val(result.keyWord)},${val(result.propertyFilterType)},${val(result.propertyFilter)}\n" )
+				writer.write("\n")	
 			}
-			if(orgLinks){
-				writer.write(",${val(orgLinks)}")
+			writer.write("KB+ Licence ID, LicenceReference,NoticePeriod,LicenceURL,LicensorRef, LicenseeRef, StartDate, EndDate, Licence Category,Licence Status")
+			propertiesSet.each{
+				writer.write(",${val(it)}")
+				writer.write(",\"${it} Notes\"")
 			}
+			writer.write("\n")
+			licences.each{ lic ->
+				writer.write("${lic.id},${val(lic.reference)},${val(lic.noticePeriod)},${val(lic.licenseUrl)},${val(lic.licensorRef)},${val(lic.licenseeRef)},${val(lic.startDate)},${val(lic.endDate)},${val(lic.licenseCategory?.value)},${val(lic.status?.value)}")
+ 
+				propertiesSet.each{ prop_name ->
+					def prop_match = lic.customProperties.find{it.type.name == prop_name}
+					if(prop_match){
+						writer.write(",${val(prop_match.value)},${val(prop_match.note)}")
+					}else{
+						writer.write(", , ")
+					}
+				}
 
-			def props = []
-			lic.customProperties.each{
-				props += "${it.type.name}:${it.toString()}"
+				writer.write("\n")
 			}
-			if(props){
-				writer.write(",${val(props)}")
-			}
-			writter.write("\n")
 			
 			writer.flush()
 			writer.close()
 		}
 	}
 
+	def addLicenceSubPkgXML(Document doc, Element into_elem, List licences){
+		log.debug("addLicenceSubPkgXML - ${licences}")
+
+		licences.each() { licence ->
+			def licElem = addXMLElementInto(doc, into_elem, "Licence", null)
+			addXMLElementInto(doc, licElem, "LicenceReference", licence.reference)
+			addXMLElementInto(doc, licElem, "LicenceID", licence.id)
+
+			def licSubs =  addXMLElementInto(doc, licElem, "Subscriptions", null)
+			licence.subscriptions.each{ subscription ->
+				def licSub = addXMLElementInto(doc, licSubs, "Subscription", null)
+
+				addXMLElementInto(doc, licSub, "SubscriptionID", subscription.id)
+				addXMLElementInto(doc, licSub, "SubscriptionName", subscription.name)
+				addXMLElementInto(doc, licSub, "SubTermStartDate", formatDate(subscription.startDate))
+				addXMLElementInto(doc, licSub, "SubTermEndDate", formatDate(subscription.endDate))
+				addXMLElementInto(doc, licSub, "ManualRenewalDate", formatDate(subscription.manualRenewalDate))
+
+				def subPkgs = addXMLElementInto(doc, licSub, "Packages", null)
+				subscription.packages.each{ subPkg ->
+					def pkg = subPkg.pkg
+					def pkgElem = addXMLElementInto(doc, subPkgs, "Package", null)
+					addXMLElementInto(doc, pkgElem, "PackageID", pkg.id)
+					addXMLElementInto(doc, pkgElem, "PackageName", pkg.name)
+					addXMLElementInto(doc, pkgElem, "PackageContentProvider", pkg.getContentProvider()?.name)
+				}
+			}
+		}
+	}
+
+	def addLicenceSubPkgTitleXML(Document doc, Element into_elem, List licences){
+		log.debug("addLicenceSubPkgXML - ${licences}")
+
+		licences.each() { licence ->
+			def licElem = addXMLElementInto(doc, into_elem, "Licence", null)
+			addXMLElementInto(doc, licElem, "LicenceReference", licence.reference)
+			addXMLElementInto(doc, licElem, "LicenceID", licence.id)
+
+			def licSubs =  addXMLElementInto(doc, licElem, "Subscriptions", null)
+			licence.subscriptions.each{ subscription ->
+				def licSub = addXMLElementInto(doc, licSubs, "Subscription", null)
+
+				addXMLElementInto(doc, licSub, "SubscriptionID", subscription.id)
+				addXMLElementInto(doc, licSub, "SubscriptionName", subscription.name)
+				addXMLElementInto(doc, licSub, "SubTermStartDate", formatDate(subscription.startDate))
+				addXMLElementInto(doc, licSub, "SubTermEndDate", formatDate(subscription.endDate))
+				addXMLElementInto(doc, licSub, "ManualRenewalDate", formatDate(subscription.manualRenewalDate))
+
+				def ieList = addXMLElementInto(doc, licSub, "TitleList", null)
+				subscription.issueEntitlements.each{ ie ->
+					def issue = addXMLElementInto(doc, ieList, "TitleListEntry", null)
+					addXMLElementInto(doc, issue, "Title", ie.tipp.title.title)
+					def title_ids = addXMLElementInto(doc, issue, "TitleIDs", null)
+					def ie_issn = addXMLElementInto(doc, title_ids, "ID", ie.tipp.title.getIdentifierValue("issn"))
+					addXMLAttr(doc,ie_issn,"namespace","issn")
+					def ie_eissn = addXMLElementInto(doc, title_ids, "ID", ie.tipp.title.getIdentifierValue("eissn"))
+					addXMLAttr(doc,ie_eissn,"namespace","eissn")
+
+					addXMLElementInto(doc, issue, "PackageName", ie.tipp.pkg.name)
+					addXMLElementInto(doc, issue, "PackageID", ie.tipp.pkg.id)
+
+					def ie_coverage = addXMLElementInto(doc,issue,"CoverageStatement",null)
+					addXMLAttr(doc, ie_coverage, "type", "Issue Entitlement")
+					addXMLElementInto(doc, ie_coverage, "SubscriptionID", subscription.id)
+					addXMLElementInto(doc, ie_coverage, "SubscriptionName", subscription.name)
+
+					addXMLElementInto(doc, ie_coverage, "StartDate", formatDate(ie.coreStatusStart))
+					addXMLElementInto(doc, ie_coverage, "EndDate", formatDate(ie.coreStatusEnd))
+					addXMLElementInto(doc, ie_coverage, "StartVolume", ie.startVolume)
+					addXMLElementInto(doc, ie_coverage, "EndVolume", ie.endVolume)
+					addXMLElementInto(doc, ie_coverage, "StartIssue", ie.startIssue)
+					addXMLElementInto(doc, ie_coverage, "EndIssue", ie.endIssue)
+					addXMLElementInto(doc, ie_coverage, "CoverageNote", ie.coverageNote)
+
+				}
+			}
+		}
+	}
 	def StreamOutSubsCSV(out, sub, entitlements, header){
 		def jc_id = sub.getSubscriber()?.getIdentifierByType('JC')?.value
 		out.withWriter { writer ->
-			def tsdate = sub.startDate ? formatter.format(sub.startDate) : ''
-			def tedate = sub.endDate ? formatter.format(sub.endDate) : ''
+			def tsdate = formatDate(sub.startDate)?:' '
+			def tedate = formatDate(sub.endDate)?:' '
 			if ( header ) {
 				writer.write("FileType,SpecVersion,JC_ID,TermStartDate,TermEndDate,SubURI,SystemIdentifier\n")
 				writer.write("${sub.type?.value?:''},\"2.0\",${jc_id?:''},${tsdate},${tedate},\"uri://kbplus/sub/${sub.identifier}\",${sub.impId}\n")
@@ -359,7 +437,18 @@ class ExportService {
 			licence.customProperties.each{ prop ->
 				def propertyType = addXMLElementInto(doc, licPropElem, "${prop.type.name.replaceAll("\\s","")}", null)
 				addXMLElementInto(doc, propertyType, "Value","${prop.getValue()}")
+				addXMLElementInto(doc, propertyType, "Note","${prop.note?:''}")
+
 			}
+			def licenceNotes = addXMLElementInto(doc, licElem, "LicenceNotes", null)
+    		licence.documents.each{docctx->
+			      if(docctx.owner?.contentType == 0 && (docctx.status == null || docctx.status?.value != 'Deleted')){
+			          def note_val = docctx.owner?.content
+			          if(note_val){
+      					addXMLElementInto(doc, licenceNotes, "Note","${note_val}")
+      				}
+			      }
+		    }
 		}
 	}
 	
@@ -793,11 +882,18 @@ class ExportService {
 			log.debug("Duration: ${(duration.hours*60)+duration.minutes}m ${duration.seconds}s")
 		}
 	}
+	def formatDate(date){
+		if(date){
+			return formatter.format(date)
+		}else
+			return null
+	}
 	/**
 	* @return the value in the required format for CSV exports.
 	**/
 	def val(val){
-		return val?"\"${val}\"":" "
+		val = val? val.replaceAll('"',"'") :" "
+		return "\"${val}\""
 	}
 	
 	

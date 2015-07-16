@@ -66,37 +66,7 @@
     </div>
 
 
-    <g:if test="${pendingChanges?.size() > 0}">
-      <div class="container alert-warn">
-        <h6>This Subscription has pending change notifications</h6>
-        <g:if test="${editable}">
-          <g:link controller="pendingChange" action="acceptAll" id="com.k_int.kbplus.Subscription:${subscriptionInstance.id}" class="btn btn-success"><i class="icon-white icon-ok"></i>Accept All</g:link>
-          <g:link controller="pendingChange" action="rejectAll" id="com.k_int.kbplus.Subscription:${subscriptionInstance.id}" class="btn btn-danger"><i class="icon-white icon-remove"></i>Reject All</g:link>
-        </g:if>
-        <br/>&nbsp;<br/>
-        <table class="table table-bordered">
-          <thead>
-            <tr>
-              <td>Info</td>
-              <td>Action</td>
-            </tr>
-          </thead>
-          <tbody>
-            <g:each in="${pendingChanges}" var="pc">
-              <tr>
-                <td>${pc.desc}</td>
-                <td>
-                  <g:if test="${editable}">
-                    <g:link controller="pendingChange" action="accept" id="${pc.id}" class="btn btn-success"><i class="icon-white icon-ok"></i>Accept</g:link>
-                    <g:link controller="pendingChange" action="reject" id="${pc.id}" class="btn btn-danger"><i class="icon-white icon-remove"></i>Reject</g:link>
-                  </g:if>
-                </td>
-              </tr>
-            </g:each>
-          </tbody>
-        </table>
-      </div>
-    </g:if>
+    <g:render template="/templates/pendingChanges" model="${['pendingChanges': pendingChanges,'flash':flash,'model':subscriptionInstance]}"/>
 
 
     <div class="container">
@@ -123,7 +93,36 @@
                            <br/>
                        </g:each></dd></dl>
 
-               <dl><dt><g:annotatedLabel owner="${subscriptionInstance}" property="identifier">Subscription Identifier</g:annotatedLabel></dt><dd>${subscriptionInstance.identifier}</dd></dl>
+               <dl><dt><g:annotatedLabel owner="${subscriptionInstance}" property="ids">Subscription Identifiers</g:annotatedLabel></dt>
+                   <dd>
+                     <table class="table table-bordered">
+                       <thead>
+                         <tr>
+                           <th>Authority</th>
+                           <th>Identifier</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         <g:each in="${subscriptionInstance.ids}" var="io">
+                           <tr>
+                             <td>${io.identifier.ns.ns}</td>
+                             <td>${io.identifier.value}</td>
+                           </tr>
+                         </g:each>
+                       </tbody>
+                     </table>
+           <g:if test="${editable}">
+              <g:form controller="ajax" action="addToCollection" class="form-inline" name="add_ident_submit">
+                Select an existing identifer using the typedown, or create a new one by entering namespace:value (EG JC:66454) then clicking that value in the dropdown to confirm.<br/>
+                <input type="hidden" name="__context" value="${subscriptionInstance.class.name}:${subscriptionInstance.id}"/>
+                <input type="hidden" name="__newObjectClass" value="com.k_int.kbplus.IdentifierOccurrence"/>
+                <input type="hidden" name="__recip" value="sub"/>
+                <input type="hidden" name="identifier" id="addIdentifierSelect"/>
+                <input type="submit" value="Add Identifier..." class="btn btn-primary btn-small"/><br/>
+              </g:form>
+            </g:if>
+                   </dd>
+               </dl>
 
                <dl><dt>Start Date</dt><dd><g:xEditable owner="${subscriptionInstance}" field="startDate" type="date"/></dd></dl>
 
@@ -150,7 +149,7 @@
                              <td><g:formatDate format="${session.sessionPreferences?.globalDateFormat}" date="${ci.datePaid}"/></td>
                              <td><g:formatDate format="${session.sessionPreferences?.globalDateFormat}" date="${ci.startDate}"/></td>
                              <td><g:formatDate format="${session.sessionPreferences?.globalDateFormat}" date="${ci.endDate}"/></td>
-                             <td>${ci.costInLocalCurrency}</td>
+                             <td>${ci.costInLocalCurrency} / ${ci.costInBillingCurrency}</td>
                          </tr>
                          </g:each>
                        </tbody>
@@ -425,6 +424,54 @@
         $('#collapseableSubDetails').on('hide', function() {
             $('.hidden-license-details i').removeClass('icon-minus').addClass('icon-plus');
         });
+
+
+        <g:if test="${editable}">
+          $("[name='add_ident_submit']").submit(function( event ) {
+            event.preventDefault();
+            $.ajax({
+              url: "<g:createLink controller='ajax' action='validateIdentifierUniqueness'/>?identifier="+$("input[name='identifier']").val()+"&owner="+"${subscriptionInstance.class.name}:${subscriptionInstance.id}",
+              success: function(data) {
+                if(data.unique){
+                  $("[name='add_ident_submit']").unbind( "submit" )
+                  $("[name='add_ident_submit']").submit();
+                }else if(data.duplicates){
+                  var warning = "The following Subscriptions are also associated with this identifier:\n";
+                  for(var ti of data.duplicates){
+                      warning+= ti.id +":"+ ti.title+"\n";
+                  }
+                  var accept = confirm(warning);
+                  if(accept){
+                    $("[name='add_ident_submit']").unbind( "submit" )
+                    $("[name='add_ident_submit']").submit();
+                  }
+                }
+              },
+            });
+          });
+
+          $("#addIdentifierSelect").select2({
+            placeholder: "Search for an identifier...",
+            minimumInputLength: 1,
+            ajax: { // instead of writing the function to execute the request we use Select2's convenient helper
+              url: "<g:createLink controller='ajax' action='lookup'/>",
+              dataType: 'json',
+              data: function (term, page) {
+                  return {
+                      q: term, // search term
+                      page_limit: 10,
+                      baseClass:'com.k_int.kbplus.Identifier'
+                  };
+              },
+              results: function (data, page) {
+                return {results: data.values};
+              }
+            },
+            createSearchChoice:function(term, data) {
+              return {id:'com.k_int.kbplus.Identifier:__new__:'+term,text:"New - "+term};
+            }
+          });
+        </g:if>
 
       });
 

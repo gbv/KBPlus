@@ -3,7 +3,10 @@
 
 import org.codehaus.groovy.grails.plugins.springsecurity.SpringSecurityUtils
 
-
+customProperties =[
+"org":["journalAccess":["name":"Public Journal Access","class":String.toString(),"note":"Set the required rights for accessing the public Journals page. For example 'Staff,Student,Public' or leave empty/delete for no public access."]
+      ]
+]
 onix = [
   "codelist" : "ONIX_PublicationsLicense_CodeLists.xsd",
   "comparisonPoints" : [
@@ -24,17 +27,17 @@ onix = [
                       // Add a new row for each related agent.
                       (0..(item."RelatedAgent"?.size() - 1)).each { int idx ->
                         def entry = [:]
-                        
+
                         // Copy the whole of the data.
                         entry << item
-                        
+
                         // Replace the related agent with a list of just 1.
                         entry."RelatedAgent" = [item["RelatedAgent"][idx]]
-                        
+
                         new_data += entry
                       }
                       break
-                      
+
                     default :
                       // Just add the item.
                       new_data += item
@@ -47,7 +50,7 @@ onix = [
                   data.clear()
                   data.addAll(new_data)
                 }
-                
+
                 // Return the data.
                 data
               }),
@@ -103,7 +106,7 @@ onix = [
                     def temp = [item]
                     //Then replace the data User(s) with the single User
                     copy['User'] = temp
-  
+
                     new_data += copy
                   }
                 }
@@ -115,7 +118,7 @@ onix = [
                       def copy = [:]
                       copy << usage
                       def temp = [method]
-                      copy[type] = temp 
+                      copy[type] = temp
                       new_data += copy
                     }
                 }
@@ -127,7 +130,7 @@ onix = [
                       copy = deepcopy(usage)
                       entry = place.clone()
                       copy."${parent}"[0]."${child}"= [entry]
-                      new_data.addAll(copy) 
+                      new_data.addAll(copy)
                     }
                 }
                 //Need to loop we might have multiple data here, genetrated from above
@@ -168,7 +171,7 @@ onix = [
                         new_data += usage
                       break;
                   }
-                  
+
                 }
                 refresh_data();
 
@@ -254,7 +257,7 @@ onix = [
                     ois?.close()
                   }
                 }
-                data.each{access -> 
+                data.each{access ->
                   access."ContinuingAccessTermRelatedAgent"?."RelatedAgent"?.getAt(0)?.each{ agent ->
                     def copy = [:]
                     def entry = [:]
@@ -390,7 +393,9 @@ titlelistTransforms = [
 packageTransforms = [
   'kbplus':[name:'KBPlus Import Format', xsl:'kbplusimp.xsl', returnFileExtention:'txt', returnMime:'text/plain']
 ]
-
+licenceTransforms = [
+  'sub_ie':[name:'XML (with IssueEntitlements)', xsl:'licenced_titles.xsl', returnFileExtention:'txt', returnMime:'text/plain']
+]
 // log4j configuration
 log4j = {
   // Example of changing the log pattern for the default console
@@ -532,7 +537,7 @@ refdatavalues = [ "User" : [ "Authorized User", "ExternalAcademic", "ExternalLib
 
 // Uncomment and edit the following lines to start using Grails encoding & escaping improvements
 
-/* remove this line 
+/* remove this line
  // GSP settings
  grails {
  views {
@@ -561,17 +566,52 @@ quartzHeartbeat = 'Never'
 financialImportTSVLoaderMappings = [
   header:[
     defaultTargetClass:'com.k_int.kbplus.CostItem',
-    
+
     // Identify the different combinations that can be used to identify domain objects for the current row
     // Names columns in the import sheet - importer will map according to config and do the right thing
     targetObjectIdentificationHeuristics:[
-      [ 
-        ref:'subscription', 
-        cls:'com.k_int.kbplus.Subscription', 
-        heuristics:[ 
-          [ type : 'simpleLookup', criteria : [ 
-                                                [ srcType:'col', colname:'SubscriptionId', domainProperty:'identifier' ]
-                                              ]
+      [
+        ref:'subscription',
+        cls:'com.k_int.kbplus.Subscription',
+        heuristics:[
+          [
+            type : 'hql',
+            hql: 'select o from Subscription as o join o.ids as io where io.identifier.ns.ns = :jcns and io.identifier.value = :orgId',
+            values : [ jcns : [type:'static', value:'JC'], orgId: [type:'column', colname:'SubscriptionId'] ]
+          ]
+        ],
+        creation:[
+          onMissing:true,
+          whenPresent:[ [ type:'ref', refname:'owner'] ],
+          properties : [
+            // [ type:'ref', property:'owner', refname:'owner' ],
+            [ type:'closure', closure : { o, nl, colmap, colname, locatedObjects -> o.setInstitution(locatedObjects['owner']) } ],
+            [ type:'val', property:'identifier', colname: 'SubscriptionId'],
+            [ type:'val', property:'name', colname: 'ResourceName'],
+            [ type:'closure', closure: { o, nl, colmap, colname, locatedObjects -> o.addNamespacedIdentifier('JC',nl[(int)(colmap.get('SubscriptionId'))]); } ]
+          ]
+        ]
+      ],
+      [
+        ref:'CICategory',
+        cls:'com.k_int.kbplus.RefdataValue',
+        heuristics:[
+          [ type : 'hql',
+            hql: 'select o from RefdataValue as o where o.value = :civalue and o.owner.desc = :citype',
+            values : [ citype : [type:'static', value:'CostItemCategory'], civalue: [type:'column', colname:'InvoiceType']]
+          ]
+        ],
+        creation:[
+          onMissing:false,
+        ]
+      ],
+      [
+        ref:'CIElement',
+        cls:'com.k_int.kbplus.RefdataValue',
+        heuristics:[
+          [ type : 'hql',
+            hql: 'select o from RefdataValue as o where o.value = :civalue and o.owner.desc = :citype',
+            values : [ citype : [type:'static', value:'CostItemElement'], civalue: [type:'static', value:'Content']]
           ]
         ],
         creation:[
@@ -581,9 +621,10 @@ financialImportTSVLoaderMappings = [
       [
         ref:'owner',
         cls:'com.k_int.kbplus.Org',
+        onOverride:'mustEqual',
         heuristics:[
-          [ 
-            type : 'hql', 
+          [
+            type : 'hql',
             hql: 'select o from Org as o join o.ids as io where io.identifier.ns.ns = :jcns and io.identifier.value = :orgId',
             values : [ jcns : [type:'static', value:'JC'], orgId: [type:'column', colname:'InstitutionId'] ]
           ]
@@ -593,58 +634,144 @@ financialImportTSVLoaderMappings = [
         ]
       ],
       [
-        ref:'invoice', 
-        cls:'com.k_int.kbplus.Invoice', 
-        heuristics:[ 
-          [ type : 'simpleLookup', 
+        ref:'invoice',
+        cls:'com.k_int.kbplus.Invoice',
+        heuristics:[
+          [ type : 'simpleLookup',
             criteria : [ [ srcType:'col', colname:'InvoiceNumber', domainProperty:'invoiceNumber' ],
-                         [ srcType:'ref', refname:'owner', domainProperty:'owner'] ] 
+                         [ srcType:'ref', refname:'owner', domainProperty:'owner'] ]
           ]
         ],
         creation:[
           onMissing:true,
+          whenPresent:[ [ type:'ref', refname:'owner'] ],
           properties : [
             [ type:'ref', property:'owner', refname:'owner' ],
-            [ type:'val', property:'invoiceNumber', colname: 'InvoiceNumber']
+            [ type:'val', property:'invoiceNumber', colname: 'InvoiceNumber' ],
+            [ type:'val', property:'startDate', colname: 'InvoicePeriodStart', datatype:'date'],
+            [ type:'val', property:'endDate', colname: 'InvoicePeriodEnd', datatype:'date']
+          ]
+        ]
+      ],
+      [
+        ref:'order',
+        cls:'com.k_int.kbplus.Order',
+        heuristics:[
+          [ type : 'simpleLookup',
+            criteria : [ [ srcType:'col', colname:'PoNumber', domainProperty:'orderNumber' ],
+                         [ srcType:'ref', refname:'owner', domainProperty:'owner'] ]
+          ]
+        ],
+        creation:[
+          onMissing:true,
+          whenPresent:[ [ type:'ref', refname:'owner'], [ type:'val', colname:'PoNumber'] ],
+          properties : [
+            [ type:'ref', property:'owner', refname:'owner' ],
+            [ type:'val', property:'orderNumber', colname: 'PoNumber']
+          ]
+        ]
+      ]
+    ],
+    creationRules : [
+      [
+        whenPresent:[ [ type:'val', colname:'InvoiceTotalExcVat'],
+                      [ type:'ref', refname:'owner', errorOnMissing:true] ],
+        ref:'MainCostItem',
+        cls:'com.k_int.kbplus.CostItem',
+        creation : [
+          properties:[
+            [ type:'ref', property:'owner', refname:'owner' ],
+            [ type:'ref', property:'invoice', refname:'invoice' ],
+            [ type:'ref', property:'order', refname:'order' ],
+            [ type:'ref', property:'sub', refname:'subscription' ],
+            [ type:'val', property:'costInBillingCurrency', colname:'InvoiceTotalExcVat', datatype:'Double'],
+            [ type:'ref', property:'costItemCategory', refname:'CICategory'],
+            [ type:'ref', property:'costItemElement', refname:'CIElement'],
+            [ type:'val', property:'startDate', colname:'InvoicePeriodStart', datatype:'date'],
+            [ type:'val', property:'endDate', colname:'InvoicePeriodEnd', datatype:'date'],
+            [ type:'val', property:'datePaid', colname:'DatePaid', datatype:'date'],
+            [ type:'valueClosure', property:'costDescription', closure: { colmap, values, locatedObjects -> "[Main Cost Item]${values[colmap['ResourceName']]}, ${values[colmap['AgreementName']]}, ${values[colmap['InvoiceNotes']]} "} ]
+          ]
+        ]
+      ],
+      [
+        ref:'TaxCostItem',
+        cls:'com.k_int.kbplus.CostItem',
+        whenPresent:[ [ type:'val', colname:'InvoiceVat'],[ type:'ref', refname:'owner'] ],
+        creation:[
+          properties:[
+            [ type:'ref', property:'owner', refname:'owner' ],
+            [ type:'ref', property:'invoice', refname:'invoice' ],
+            [ type:'ref', property:'order', refname:'order' ],
+            [ type:'ref', property:'sub', refname:'subscription' ],
+            [ type:'val', property:'costInBillingCurrency', colname:'InvoiceVat', datatype:'Double'],
+            [ type:'val', property:'startDate', colname:'InvoicePeriodStart', datatype:'date'],
+            [ type:'val', property:'endDate', colname:'InvoicePeriodEnd', datatype:'date'],
+            [ type:'val', property:'datePaid', colname:'DatePaid', datatype:'date'],
+            [ type:'ref', property:'costItemCategory', refname:'CICategory'],
+            [ type:'ref', property:'costItemElement', refname:'CIElement'],
+            [ type:'valueClosure', property:'costDescription', closure: { colmap, values, locatedObjects -> "[Tax] ${values[colmap['ResourceName']]}, ${values[colmap['AgreementName']]}, ${values[colmap['InvoiceNotes']]} "} ]
+          ]
+        ]
+      ],
+      [
+        ref:'InvoiceTransactionCharge',
+        cls:'com.k_int.kbplus.CostItem',
+        whenPresent:[ [ type:'val', colname:'InvoiceTransactionCharge'],[ type:'ref', refname:'owner'] ],
+        creation:[
+          properties:[
+            [ type:'ref', property:'owner', refname:'owner' ],
+            [ type:'ref', property:'invoice', refname:'invoice' ],
+            [ type:'ref', property:'order', refname:'order' ],
+            [ type:'ref', property:'sub', refname:'subscription' ],
+            [ type:'val', property:'costInBillingCurrency', colname:'InvoiceTransactionCharge', datatype:'Double'],
+            [ type:'ref', property:'costItemCategory', refname:'CICategory'],
+            [ type:'val', property:'startDate', colname:'InvoicePeriodStart', datatype:'date'],
+            [ type:'val', property:'endDate', colname:'InvoicePeriodEnd', datatype:'date'],
+            [ type:'val', property:'datePaid', colname:'DatePaid', datatype:'date'],
+            [ type:'ref', property:'costItemElement', refname:'CIElement'],
+            [ type:'valueClosure', property:'costDescription', closure: { colmap, values, locatedObjects -> "[Transaction Charge] ${values[colmap['ResourceName']]}, ${values[colmap['AgreementName']]}, ${values[colmap['InvoiceNotes']]} "} ]
           ]
         ]
       ]
     ]
   ],
   cols: [
-    [colname:'InvoiceId', gormMappingPath:'invoice.invoiceNumber'],
-    [colname:'SubscriptionId'],
-    [colname:'JC_OrderNumber'],
-    [colname:'InvoiceNumber'],
-    [colname:'PoNumber'],
-    [colname:'IssuedDate'],
-    [colname:'DueDate'],
-    [colname:'InstitutionName'],
-    [colname:'InstitutionId'],
-    [colname:'ISNIId'],
-    [colname:'AccountId'],
-    [colname:'ResourceName'],
-    [colname:'ResourceId'],
-    [colname:'AgreementName'],
-    [colname:'AgreementId'],
-    [colname:'PublisherName'],
-    [colname:'InvoicePeriodStart'],
-    [colname:'InvoicePeriodEnd'],
-    [colname:'Price'],
-    [colname:'AnnualAccessFee'],
-    [colname:'AdditionalFees'],
-    [colname:'SubscriptionTransactionCharge'],
-    [colname:'SubscriptionVAT'],
-    [colname:'DatePaid'],
-    [colname:'InvoiceNotes'],
-    [colname:'InvoiceStatus'],
-    [colname:'Currency'],
-    [colname:'InvoiceTotalExcVat'],
-    [colname:'InvoiceTransactionCharge'],
-    [colname:'InvoiceVat'],
-    [colname:'InvoiceTotal'],
-    [colname:'ItemCount'],
-    [colname:'TotalSubscriptionValue'],
-    [colname:'InvoiceType']
+    [colname:'InvoiceId', gormMappingPath:'invoice.invoiceNumber', desc:''],
+    [colname:'SubscriptionId', desc:'Used to match to an existing KB+ subscription - must contain the KB+ Subscription Reference to match. Subscriptions are matched using references from JC Namespace'],
+    [colname:'JC_OrderNumber', desc:''],
+    [colname:'InvoiceNumber', desc:'Used to match this line item to an existing KB+ Invoice. Line must first match an organisation via InstitutionId, then this is matched on Invoice Reference. If none found, a new invoice will be created'],
+    [colname:'PoNumber', desc:''],
+    [colname:'IssuedDate', desc:''],
+    [colname:'DueDate', desc:''],
+    [colname:'InstitutionName', desc:''],
+    [colname:'InstitutionId', desc:'Used to look up an institution based on the JC Institution ID.'],
+    [colname:'ISNIId', desc:''],
+    [colname:'AccountId', desc:''],
+    [colname:'ResourceName', desc:''],
+    [colname:'ResourceId', desc:''],
+    [colname:'AgreementName', desc:''],
+    [colname:'AgreementId', desc:''],
+    [colname:'PublisherName', desc:''],
+    [colname:'InvoicePeriodStart', desc:''],
+    [colname:'InvoicePeriodEnd', desc:''],
+    [colname:'Price', desc:''],
+    [colname:'AnnualAccessFee', desc:''],
+    [colname:'AdditionalFees', desc:''],
+    [colname:'SubscriptionTransactionCharge', desc:''],
+    [colname:'SubscriptionVAT', desc:''],
+    [colname:'DatePaid', desc:''],
+    [colname:'InvoiceNotes', desc:''],
+    [colname:'InvoiceStatus', desc:''],
+    [colname:'Currency', desc:''],
+    [colname:'InvoiceTotalExcVat', desc:''],
+    [colname:'InvoiceTransactionCharge', desc:''],
+    [colname:'InvoiceVat', desc:''],
+    [colname:'InvoiceTotal', desc:''],
+    [colname:'ItemCount', desc:''],
+    [colname:'TotalSubscriptionValue', desc:''],
+    [colname:'InvoiceType', desc:'', type:'vocab', mapping:[
+      'SubscriptionInvoice':'Price',
+    ]]
   ]
 ];
